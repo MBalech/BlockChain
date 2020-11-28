@@ -7,9 +7,10 @@ import Fortmatic from 'fortmatic'
 const connect = async dispatch => {
   if (window.ethereum) {
 
+    //Création du noeud pour fortmatic
     const customNodeOptions = {
-      rpcUrl: 'http://127.0.0.1:7545', // your own node url
-      chainId: 0x539 // chainId of your own node
+      rpcUrl: 'http://127.0.0.1:7545', // url du noeud
+      chainId: 0x539 // chainId du noeud
     }
 
     //let fm = new Fortmatic('pk_test_DA712556385A2857', customNodeOptions);
@@ -26,25 +27,12 @@ const connect = async dispatch => {
         {from : account}
       )
 
-      const ids = await contract.methods.getAllIds().call();
-      var allarticles = [];
-      for(var i = 0; i < ids.length; i++){
-        const article = await contract.methods.articleContent(ids[i]).call()
-        allarticles.push({id : ids[i], article:article});
-      }
-      const historical = [];
-      for(var i = 0; i < ids.length; i++){
-        const numHisto = await contract.methods.getNumberHistorical(ids[i]).call();
-        const articles = [];
-        for(var j = 0; j < numHisto; j++){
-          const hist = await contract.methods.getHistorical(ids[i], j).call();
-          articles.push(hist);
-        }
-        historical.push({id : ids[i], articlesHisto: articles});
-      }
-      dispatch(connectEthereum({ account, contract}));
-      dispatch(getAllArticlesStore({allarticles}));
-      dispatch(updateHistorical({historical}));
+      const allarticles = await getAllArticles(contract);
+      const historical = await getHistorical(contract);
+
+      dispatch(connectEthereum({ account, contract})); // modification de l'état
+      dispatch(getAllArticlesStore({allarticles})); // modification de l'état
+      dispatch(updateHistorical({historical})); // modification de l'état
     } catch (error) {
       console.error(error)
     }
@@ -55,42 +43,58 @@ const connect = async dispatch => {
 
 const saveArticle = (article) => async dispatch => {
   if(article != null) {
-    const { contract } = store.getState()
-    await contract.methods.createArticle(article.toString()).send();
-    const ids = await contract.methods.getAllIds().call();
-    var allarticles = [];
-    for (var i = 0; i < ids.length; i++) {
-      const article = await contract.methods.articleContent(ids[i]).call()
-      allarticles.push({ id: ids[i], article: article });
-    }
-    dispatch(getAllArticlesStore({ allarticles }));
+    const { contract } = store.getState() // récupération du contract
+    await contract.methods.createArticle(article.toString()).send(); // création de l'article dans le contrat
+
+    // Récupération de tous les articles pour mettre à jour suite à l'insertion du dernier
+    const allarticles = getAllArticles(contract);
+    dispatch(getAllArticlesStore({ allarticles })); // modification de l'état
   }
 }
 
 const modifyArticle = (id,article) => async dispatch => {
-  const { contract } = store.getState()
-  await contract.methods.modifyArticle(id,article.toString()).send();
-  const ids = await contract.methods.getAllIds().call();
+  const { contract } = store.getState() // Récupération du contrat
+
+  // Envoie de la mise à jour
+  await contract.methods.modifyArticle(id,article.toString()).send(); // Envoie de la modification du contenu
+
+  // Mise à jour des articles dans l'application
+  const allarticles = getAllArticles(contract);
+  dispatch(getAllArticlesStore({allarticles})); // Mise à jour de l'état
+
+  // Mise à jour de l'historique de l'application
+  const historical = await getHistorical(contract);
+  dispatch(updateHistorical({historical})); // mise à jour de l'état
+}
+
+//Création du tableau de tous les articles
+async function getAllArticles (contract) {
+  const ids = await contract.methods.getAllIds().call(); // récupération de tous les ids
   var allarticles = [];
-  for(var i = 0; i < ids.length; i++){
-    const article = await contract.methods.articleContent(ids[i]).call()
-    allarticles.push({id : ids[i], article:article});
+  for (var i = 0; i < ids.length; i++) {
+    const article = await contract.methods.articleContent(ids[i]).call(); // // récupération de l'article par son id
+    allarticles.push({ id: ids[i], article: article }); // insertion de l'article dans le tableau
   }
 
-  dispatch(getAllArticlesStore({allarticles}));
+  return allarticles;
+}
 
+//Création du tableau des historique
+async function getHistorical(contract){
+  const ids = await contract.methods.getAllIds().call(); // récupération de tous les ids
   const historical = [];
   for(var i = 0; i < ids.length; i++){
-    const numHisto = await contract.methods.getNumberHistorical(ids[i]).call();
+    const numHisto = await contract.methods.getNumberHistorical(ids[i]).call(); // récupération du nombre d'historique par article
     const articles = [];
     for(var j = 0; j < numHisto; j++){
-      const hist = await contract.methods.getHistorical(ids[i], j).call();
+      const hist = await contract.methods.getHistorical(ids[i], j).call(); // récupération de l'historique en fonction du numéro et de l'article
       articles.push(hist);
     }
-    historical.push({id : ids[i], articlesHisto: articles});
+    historical.push({id : ids[i], articlesHisto: articles}); // insertion de l'historique dans le tableau
   }
 
-  dispatch(updateHistorical({historical}));
+  return historical;
 }
+
 
 export { connect, saveArticle,modifyArticle }
